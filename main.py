@@ -1,7 +1,6 @@
 import telebot
 import json
 import random
-# from telebot import types
 import datetime
 
 with open('secrets.json', 'r') as file:
@@ -39,10 +38,10 @@ invited_users = {
 def logger(text):
     try:
         with open('log', mode='a', encoding='UTF-8') as log:
-            log.write(text + '\n')
+            log.write(str(datetime.datetime.now()) + ' - ' + text + '\n')
             log.close()
     except:
-        print('Логгер сломаося')
+        print(str(datetime.datetime.now()) + ' Логер сломался')
 
 def get_registered_users():
     try:
@@ -51,7 +50,7 @@ def get_registered_users():
             db.close()
         return users
     except:
-        logger(str(datetime.datetime.now()) + ' - Не удалось выполнить чтение из БД.')
+        logger('Не удалось выполнить чтение из БД.')
 
 
 def write_registered_user(users):
@@ -60,35 +59,32 @@ def write_registered_user(users):
             db.write(json.dumps(users, ensure_ascii=True))
             db.close()
     except:
-        logger(str(datetime.datetime.now()) + ' - Не удалось выполнить запись в БД.')
+        logger('Не удалось выполнить запись в БД.')
 
 def mixer():
-    try:
-        dct = {}
-        users = get_registered_users().keys()
-        print(users)
-        for user in users:
-            user_exception = exceptions[user]
-            choice_range = list(filter(lambda x: x != user_exception[0] and x != user_exception[1], list(invited_users.values())))
-            dct[user] = random.choice(choice_range)
-            for k, v in invited_users.items():
-                if v == dct[user]:
-                    invited_users.pop(k)
-                    break
-        logger(str(datetime.datetime.now()) + ' - Пользователи перемешаны')
-        return dct
-    except:
-        logger(str(datetime.datetime.now()) + ' - Не удалось перемешать пользователей')
+    while len(invited_users) > 0:
+        try:
+            dct = {}
+            users = get_registered_users().keys()
+            for user in users:
+                user_exception = exceptions[user]
+                choice_range = list(filter(lambda x: x != user_exception[0] and x != user_exception[1], list(invited_users.values())))
+                dct[user] = random.choice(choice_range)
+                for k, v in invited_users.items():
+                    if v == dct[user]:
+                        invited_users.pop(k)
+                        break
+            logger('Пользователи перемешаны')
+            return dct
+        except:
+            logger('Не удалось перемешать пользователей')
 
-
-logger(str(datetime.datetime.now()) + ' Бот запущен')
+logger('-------------------------------------------------------------------------')
+logger('Бот запущен')
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
     try:
-        # markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        # button1 = types.KeyboardButton('Сколько уже зарегистрировано?')
-        # markup.add(button1)
         registered_users = get_registered_users()
         username = message.from_user.username
         id = message.from_user.id
@@ -96,7 +92,7 @@ def start_message(message):
             registered_users[invited_users[username]] = id
             write_registered_user(registered_users)
             logger(str(datetime.datetime.now()) + f' - Пользователь {username} зарегистрирован')
-            bot.send_message(message.from_user.id, f'Приветствую {invited_users[username]}. Вы зарегестирировались.')
+            bot.send_message(message.from_user.id, f'Приветствую {invited_users[username]}. Вы зарегистирировались.')
             if len(registered_users) == len(invited_users):
                 logger(str(datetime.datetime.now()) + ' - Все пользователи зарегистрированы')
                 mix_result = mixer()
@@ -104,11 +100,10 @@ def start_message(message):
                 for name, id in registered_users.items():
                     try:
                         message_text = f'{mix_result[name]} это тот кому вы дарите подарок'
-                        print(name, message_text)
                         bot.send_message(id, message_text)
-                        logger(str(datetime.datetime.now()) + f' - Пользователь {name} получил результат')
+                        logger(f'Пользователь {name} получил результат')
                     except:
-                        logger(str(datetime.datetime.now()) + f' - Не удалось отправить сообщение с результатом пользователю {name}')
+                        logger(f'Не удалось отправить сообщение с результатом пользователю {name}')
             else:
                 bot.send_message(message.from_user.id, f'Всего зарегистрировалось {len(registered_users)}/{len(invited_users)} человек. Вы узнаете результат как только все пользователи пройдут регистрацию')
 
@@ -117,12 +112,7 @@ def start_message(message):
         else:
             bot.send_message(message.from_user.id, f'Вас сюда не звали {message.from_user.first_name}')
     except:
-        logger(str(datetime.datetime.now()) + f' - Не удалось зарегистрировать пользователя {username}')
+        logger(f'Не удалось зарегистрировать пользователя {username}')
 
-@bot.message_handler(content_types=['text'])
-def start_message(message):
-    if message.text == 'Сколько уже зарегистрировано?':
-        registered_users = get_registered_users()
-        bot.send_message(message.from_user.id, f'Всего зарегистрировалось {len(registered_users)}/{len(invited_users)} человек.')
 
 bot.infinity_polling()
