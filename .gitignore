@@ -2,3 +2,4 @@
 /.idea/
 log
 secrets.json
+db.json
