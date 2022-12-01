@@ -79,8 +79,6 @@ def mixer():
         except:
             logger('Не удалось перемешать пользователей')
 
-logger('-------------------------------------------------------------------------')
-logger('Бот запущен')
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
@@ -114,5 +112,13 @@ def start_message(message):
     except:
         logger(f'Не удалось зарегистрировать пользователя {username}')
 
+
+logger('-------------------------------------------------------------------------')
+logger('Бот запущен')
+
+try:
+    open('db.json', mode='r', encoding='UTF-8')
+except:
+    write_registered_user({})
 
 bot.infinity_polling()
