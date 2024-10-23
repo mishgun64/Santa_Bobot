@@ -37,7 +37,7 @@ invited_users = {
 
 def logger(text):
     try:
-        with open('log', mode='a', encoding='UTF-8') as log:
+        with open('/data/log', mode='a', encoding='UTF-8') as log:
             log.write(str(datetime.datetime.now()) + ' - ' + text + '\n')
             log.close()
     except:
@@ -45,7 +45,7 @@ def logger(text):
 
 def get_registered_users():
     try:
-        with open('db.json', mode='r', encoding='UTF-8') as db:
+        with open('/data/db.json', mode='r', encoding='UTF-8') as db:
             users = json.loads(db.read())
             db.close()
         return users
@@ -55,7 +55,7 @@ def get_registered_users():
 
 def write_registered_user(users):
     try:
-        with open('db.json', mode='w', encoding='UTF-8') as db:
+        with open('/data/db.json', mode='w', encoding='UTF-8') as db:
             db.write(json.dumps(users, ensure_ascii=True))
             db.close()
     except:
@@ -117,7 +117,7 @@ logger('------------------------------------------------------------------------
 logger('Бот запущен')
 
 try:
-    open('db.json', mode='r', encoding='UTF-8')
+    open('/data/db.json', mode='r', encoding='UTF-8')
 except:
     write_registered_user({})
 
