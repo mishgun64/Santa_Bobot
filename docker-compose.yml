@@ -1,7 +1,7 @@
 services:
   santa_bobot:
     container_name: santa_bobot
-    image: santa_bobot:v2
+    image: santa_bobot:latest
     restart: unless-stopped
     volumes:
       - /root/santa_data:/data
