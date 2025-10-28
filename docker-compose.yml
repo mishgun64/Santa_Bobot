@@ -4,4 +4,4 @@ services:
     image: santa_bobot:latest
     restart: unless-stopped
     volumes:
-      - /root/santa_data:/data
+      - ./data:/app/data
