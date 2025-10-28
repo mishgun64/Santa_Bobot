@@ -48,6 +48,23 @@ bans = {
     'Анастасия': ''
 }
 
+is_registred = {
+    'Михаил': '❌',
+    'Регина': '❌',
+    'Дмитрий': '❌',
+    'Евгения': '❌',
+    'Сергей': '❌',
+    'Татьяна': '❌',
+    'Пётр': '❌',
+    'Ксения': '❌',
+    'Борис': '❌',
+    'Анастасия': '❌'
+}
+
+commands = [
+    telebot.types.BotCommand("start", "Запустить бота"),
+]
+bot.set_my_commands(commands)
 def logger(text):
     try:
         with open('./data/log', mode='a', encoding='UTF-8') as log:
@@ -103,7 +120,20 @@ def mixer():
 
 
 @bot.message_handler(commands=['start'])
-def start_message(message):
+def send_welcome(message):
+    # создаём клавиатуру
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    btn1 = telebot.types.KeyboardButton("Регистрация")
+    btn2 = telebot.types.KeyboardButton("Показать зарегестрированных пользователей")
+    markup.add(btn1, btn2)
+    bot.send_message(
+        message.chat.id,
+        "Привет! Нажми кнопку 'Регистрация', чтобы начать.",
+        reply_markup=markup
+    )
+
+@bot.message_handler(func=lambda m: m.text == "Регистрация")
+def handle_reg_button(message):
     registered_users = get_registered_users()
     username = message.from_user.username
     ban_range = get_choice_range(username)
@@ -118,15 +148,26 @@ def start_message(message):
             button_6 = telebot.types.InlineKeyboardButton(text=ban_range[5], callback_data=invited_users[username] + ":" + ban_range[5])
             button_7 = telebot.types.InlineKeyboardButton(text=ban_range[6], callback_data=invited_users[username] + ":" + ban_range[6])
             button_8 = telebot.types.InlineKeyboardButton(text=ban_range[7], callback_data=invited_users[username] + ":" + ban_range[7])
-            keyboard.add(button_1, button_2, button_3, button_4, button_5, button_6, button_7, button_8)
-            bot.send_message(message.chat.id, f'Приветствую {invited_users[username]}. Выбери одного человека, которому ты не хочешь дарить подарок в этом году', reply_markup=keyboard)
+            button_9 = telebot.types.InlineKeyboardButton(text="Могу дарить кому угодно", callback_data=invited_users[username] + ":" + "")
+            keyboard.add(button_1, button_2, button_3, button_4, button_5, button_6, button_7, button_8, button_9)
+            bot.send_message(message.chat.id, f'Приветствую {invited_users[username]}. Выберите одного человека, которому вы не хотите дарить подарок в этом году', reply_markup=keyboard)
         elif username in invited_users and invited_users[username] in registered_users:
-            bot.send_message(message.from_user.id, f'Снова здравствуйте {invited_users[username]}. Вы уже зарегестирированы.')
+            bot.send_message(message.from_user.id, f'Вы уже зарегестирированы.')
         else:
             bot.send_message(message.from_user.id, f'Вас сюда не звали {message.from_user.first_name}')
     except:
         logger(f'Не удалось вывести клавиатуру для пользователя {username}')
 
+@bot.message_handler(func=lambda m: m.text == "Показать зарегестрированных пользователей")
+def handle_reg_users_button(message):
+    registered_users = get_registered_users()
+    for user, value in is_registred.items():
+        if user in registered_users.keys():
+            is_registred[user] = '✅'
+    registred = ''
+    for k, v in is_registred.items():
+        registred += f'{v} {k}\n'
+    bot.send_message(message.chat.id, registred)
 
 
 @bot.callback_query_handler(func=lambda call: True)
