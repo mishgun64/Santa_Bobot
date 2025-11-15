@@ -92,7 +92,7 @@ def send_welcome(message):
     # создаём клавиатуру
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     btn1 = telebot.types.KeyboardButton("Регистрация")
-    btn2 = telebot.types.KeyboardButton("Показать заригестрированных пользователей")
+    btn2 = telebot.types.KeyboardButton("Показать зарегистрированных пользователей")
     markup.add(btn1, btn2)
     bot.send_message(
         message.chat.id,
