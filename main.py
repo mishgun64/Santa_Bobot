@@ -116,8 +116,10 @@ def handle_reg_button(message):
             button_6 = telebot.types.InlineKeyboardButton(text=ban_range[5], callback_data=invited_users[username] + ":" + ban_range[5])
             button_7 = telebot.types.InlineKeyboardButton(text=ban_range[6], callback_data=invited_users[username] + ":" + ban_range[6])
             button_8 = telebot.types.InlineKeyboardButton(text=ban_range[7], callback_data=invited_users[username] + ":" + ban_range[7])
-            button_9 = telebot.types.InlineKeyboardButton(text="Могу дарить кому угодно", callback_data=invited_users[username] + ":" + "")
-            keyboard.add(button_1, button_2, button_3, button_4, button_5, button_6, button_7, button_8, button_9)
+            button_9 = telebot.types.InlineKeyboardButton(text=ban_range[8], callback_data=invited_users[username] + ":" + ban_range[8])
+            button_10 = telebot.types.InlineKeyboardButton(text=ban_range[9], callback_data=invited_users[username] + ":" + ban_range[9])
+            button_11 = telebot.types.InlineKeyboardButton(text="Могу дарить кому угодно", callback_data=invited_users[username] + ":" + "")
+            keyboard.add(button_1, button_2, button_3, button_4, button_5, button_6, button_7, button_8, button_9, button_10, button_11)
             bot.send_message(message.chat.id, f"Приветствую {invited_users[username]}. Выберите одного человека, которому вы не хотите дарить подарок в этом году", reply_markup=keyboard)
         elif username in invited_users and invited_users[username] in registered_users:
             bot.send_message(message.from_user.id, f"Вы уже зарегистирированы.")
