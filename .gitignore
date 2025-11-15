@@ -1,6 +1,6 @@
 /venv/
 /.idea/
 log
-secrets.json
+data/secrets.json
 db.json
 db2.json
