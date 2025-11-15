@@ -92,7 +92,7 @@ def send_welcome(message):
     # создаём клавиатуру
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     btn1 = telebot.types.KeyboardButton("Регистрация")
-    btn2 = telebot.types.KeyboardButton("Показать зарегестрированных пользователей")
+    btn2 = telebot.types.KeyboardButton("Показать заригестрированных пользователей")
     markup.add(btn1, btn2)
     bot.send_message(
         message.chat.id,
@@ -120,13 +120,13 @@ def handle_reg_button(message):
             keyboard.add(button_1, button_2, button_3, button_4, button_5, button_6, button_7, button_8, button_9)
             bot.send_message(message.chat.id, f"Приветствую {invited_users[username]}. Выберите одного человека, которому вы не хотите дарить подарок в этом году", reply_markup=keyboard)
         elif username in invited_users and invited_users[username] in registered_users:
-            bot.send_message(message.from_user.id, f"Вы уже зарегестирированы.")
+            bot.send_message(message.from_user.id, f"Вы уже зарегистирированы.")
         else:
             bot.send_message(message.from_user.id, f"Вас сюда не звали {message.from_user.first_name}")
     except:
         logger(f"Не удалось вывести клавиатуру для пользователя {username}")
 
-@bot.message_handler(func=lambda m: m.text == "Показать зарегестрированных пользователей")
+@bot.message_handler(func=lambda m: m.text == "Показать зарегистрированных пользователей")
 def handle_reg_users_button(message):
     registered_users = get_registered_users()
     for user, value in is_registred.items():
