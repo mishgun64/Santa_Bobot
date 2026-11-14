@@ -3,5 +3,13 @@ services:
     container_name: santa_bobot
     image: santa_bobot:latest
     restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      WEBHOOK_HOST: "0.0.0.0"
+      WEBHOOK_PORT: "8443"
+      WEBHOOK_PATH: "/webhook"
+      WEBHOOK_URL: ""
+      WEBHOOK_SECRET: ""
     volumes:
       - ./data:/app/data

@@ -1,6 +1,8 @@
 /venv/
 /.idea/
 log
+__pycache__/
+*.pyc
 data/secrets.json
 db.json
 db2.json
