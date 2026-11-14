@@ -1,0 +1,53 @@
+when:
+  - event: push
+    branch: master
+
+  - event: manual
+    evaluate: 'PIPELINE == "santa_bot/config"'
+
+steps:
+  deploy:
+    image: alpine/ansible:latest
+
+    environment:
+      SSH_KEY:
+        from_secret: ssh_key
+
+    commands:
+      - |
+        if [ "$CI_PIPELINE_EVENT" = "manual" ]; then
+          if [ -z "$ROLE" ]; then
+            echo "ERROR: ROLE parameter is required"
+            exit 1
+          fi
+
+          if [ -z "$TARGET" ]; then
+            echo "ERROR: TARGET parameter is required"
+            exit 1
+          fi
+        else
+          ROLE="santa_bot/config"
+          TARGET="santa_bot_lxc"
+        fi
+
+        echo "ROLE=$ROLE"
+        echo "TARGET=$TARGET"
+
+        apk add --no-cache git sops
+        sops --version
+
+        # Playbooks and roles live in the pve repository, not this one.
+        git clone --depth 1 --branch main https://github.com/mishgun64/pve.git pve
+        cd pve
+
+        mkdir -p ~/.ssh
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+
+        export ANSIBLE_CONFIG=ansible/ansible.cfg
+
+        ansible-playbook \
+          -i ansible/hosts_prod \
+          ansible/run_role.yml \
+          -e "role_name=$${ROLE}" \
+          -e "target_hosts=$${TARGET}"
