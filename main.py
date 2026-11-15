@@ -29,8 +29,14 @@ with open("data/users.json", "r", encoding="UTF-8") as file:
 print(invited_users)
 
 with open("data/users.json", "r", encoding="UTF-8") as file:
-    bans = json.loads(file.read())["bans"]
+    raw_bans = json.loads(file.read())["bans"]
     file.close()
+# Обратная совместимость: старый формат хранил один бан строкой, новый — списком до двух банов
+bans = {k: ([v] if isinstance(v, str) and v else ([] if isinstance(v, str) else list(v or [])))
+        for k, v in raw_bans.items()}
+# Дополняем участниками, которых ещё нет в bans, чтобы bans[giver] был всегда безопасен
+for _name in invited_users.values():
+    bans.setdefault(_name, [])
 print(bans)
 
 with open("data/users.json", "r", encoding="UTF-8") as file:
@@ -40,14 +46,14 @@ print(is_registred)
 
 ADMIN_USERNAME = "mishgun64"
 last_mix_result = None
-update_lock = threading.Lock()
+# RLock: webhook-обработчик держит лок на весь update, а callback_query берёт его же повторно
+update_lock = threading.RLock()
 
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "0.0.0.0")
 WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8443"))
 WEBHOOK_PATH = os.environ.get("WEBHOOK_PATH", "/webhook")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
-update_lock = threading.Lock()
 
 commands = [
     telebot.types.BotCommand("start", "Запустить бота"),
@@ -93,20 +99,67 @@ def save_users_config():
 
 def clear_bans():
     for k in bans:
-        bans[k] = ""
+        bans[k] = []
     for k in is_registred:
         is_registred[k] = "❌"
     save_users_config()
     write_registered_user({})
 
-def get_choice_range(user):
+def get_choice_range(user, exclude=()):
     choice_range = []
-    name = invited_users[user]
+    name = invited_users.get(user)
+    if name is None:
+        return choice_range
 
     for n in invited_users.values():
-        if n not in exceptions[name]:
+        if n not in exceptions.get(name, []) and n not in exclude:
             choice_range.append(n)
     return choice_range
+
+def build_ban_keyboard(giver_name, options, step, skip=None):
+    keyboard = telebot.types.InlineKeyboardMarkup(row_width=2)
+    buttons = [telebot.types.InlineKeyboardButton(text=name, callback_data=f"b{step}:{giver_name}:{name}") for name in options]
+    keyboard.add(*buttons)
+    if skip:
+        keyboard.add(telebot.types.InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"b{step}:{giver_name}:"))
+    return keyboard
+
+def complete_registration(call, username):
+    global last_mix_result
+    try:
+        registered_users = get_registered_users()
+        if registered_users is None:
+            raise ValueError("не удалось прочитать БД")
+        user_id = call.from_user.id
+        registered_users[invited_users[username]] = user_id
+        write_registered_user(registered_users)
+        logger(f"Пользователь {username} зарегистрирован")
+        bot.send_message(call.from_user.id, f"Вы зарегистирированы.")
+        if len(registered_users) == len(invited_users):
+            logger("Все пользователи зарегистрированы")
+            last_mix_result = mixer()
+            if last_mix_result is None:
+                logger("Не удалось выполнить распределение после регистрации")
+                admin_name = invited_users[ADMIN_USERNAME]
+                bot.send_message(registered_users[admin_name], "Не удалось выполнить распределение после регистрации")
+                return
+            for name, user_id in registered_users.items():
+                try:
+                    message_text = f"{last_mix_result[name]} это тот кому вы дарите подарок"
+                    bot.send_message(user_id, message_text)
+                    logger(f"Пользователь {name} получил результат")
+                except:
+                    logger(f"Не удалось отправить сообщение с результатом пользователю {name}")
+            admin_name = invited_users[ADMIN_USERNAME]
+            send_admin_panel(registered_users[admin_name])
+        else:
+            bot.send_message(call.from_user.id, f"Всего зарегистрировалось {len(registered_users)}/{len(invited_users)} человек. Вы узнаете результат как только все пользователи пройдут регистрацию")
+    except:
+        logger(f"Не удалось зарегистрировать пользователя {username}")
+        try:
+            bot.send_message(call.from_user.id, "Не удалось завершить регистрацию. Нажмите 'Регистрация' ещё раз.")
+        except:
+            logger(f"Не удалось уведомить пользователя {username} об ошибке регистрации")
 
 def get_history_exclusions():
     current_year = datetime.datetime.now().year
@@ -140,10 +193,10 @@ def mixer():
 
         adjacency = {}
         for user in users:
-            excluded = set(exceptions[user])
-            user_ban = bans[user]
-            if user_ban:
-                excluded.add(user_ban)
+            excluded = set(exceptions.get(user, ()))
+            for user_ban in bans.get(user, []):
+                if user_ban:
+                    excluded.add(user_ban)
             excluded |= history.get(user, set())
             allowed = [r for r in receivers if r not in excluded]
             random.shuffle(allowed)
@@ -212,7 +265,7 @@ def handle_clear_bans(call):
     registered_users = get_registered_users()
     for name, uid in registered_users.items():
         try:
-            bot.send_message(uid, "Баны сняты. Пройдите регистрацию заново и выберите человека, которому не хотите дарить подарок.")
+            bot.send_message(uid, "Баны сняты. Пройдите регистрацию заново и выберите до двух человек, которым не хотите дарить подарок.")
         except:
             logger(f"Не удалось уведомить пользователя {name}")
     clear_bans()
@@ -262,31 +315,28 @@ def send_welcome(message):
 
 @bot.message_handler(func=lambda m: m.text == "Регистрация")
 def handle_reg_button(message):
-    registered_users = get_registered_users()
     username = message.from_user.username
-    ban_range = get_choice_range(username)
     try:
+        registered_users = get_registered_users()
+        if registered_users is None:
+            raise ValueError("не удалось прочитать БД")
         if username in invited_users and invited_users[username] not in registered_users.keys():
-            keyboard = telebot.types.InlineKeyboardMarkup(row_width=2)
-            button_1 = telebot.types.InlineKeyboardButton(text=ban_range[0], callback_data=invited_users[username] + ":" + ban_range[0])
-            button_2 = telebot.types.InlineKeyboardButton(text=ban_range[1], callback_data=invited_users[username] + ":" + ban_range[1])
-            button_3 = telebot.types.InlineKeyboardButton(text=ban_range[2], callback_data=invited_users[username] + ":" + ban_range[2])
-            button_4 = telebot.types.InlineKeyboardButton(text=ban_range[3], callback_data=invited_users[username] + ":" + ban_range[3])
-            button_5 = telebot.types.InlineKeyboardButton(text=ban_range[4], callback_data=invited_users[username] + ":" + ban_range[4])
-            button_6 = telebot.types.InlineKeyboardButton(text=ban_range[5], callback_data=invited_users[username] + ":" + ban_range[5])
-            button_7 = telebot.types.InlineKeyboardButton(text=ban_range[6], callback_data=invited_users[username] + ":" + ban_range[6])
-            button_8 = telebot.types.InlineKeyboardButton(text=ban_range[7], callback_data=invited_users[username] + ":" + ban_range[7])
-            button_9 = telebot.types.InlineKeyboardButton(text=ban_range[8], callback_data=invited_users[username] + ":" + ban_range[8])
-            button_10 = telebot.types.InlineKeyboardButton(text=ban_range[9], callback_data=invited_users[username] + ":" + ban_range[9])
-            button_11 = telebot.types.InlineKeyboardButton(text="Могу дарить кому угодно", callback_data=invited_users[username] + ":" + "")
-            keyboard.add(button_1, button_2, button_3, button_4, button_5, button_6, button_7, button_8, button_9, button_10, button_11)
-            bot.send_message(message.chat.id, f"Приветствую {invited_users[username]}. Выберите одного человека, которому вы не хотите дарить подарок в этом году", reply_markup=keyboard)
+            options = get_choice_range(username)
+            if not options:
+                logger(f"Нет доступных вариантов бана для пользователя {username}")
+                bot.send_message(message.chat.id, "Нет доступных вариантов бана. Сообщите администратору.")
+                return
+            bot.send_message(message.chat.id, f"Приветствую {invited_users[username]}. Выберите первого человека, которому вы не хотите дарить подарок в этом году (всего можно до двух)", reply_markup=build_ban_keyboard(invited_users[username], options, 1))
         elif username in invited_users and invited_users[username] in registered_users:
             bot.send_message(message.from_user.id, f"Вы уже зарегистирированы.")
         else:
             bot.send_message(message.from_user.id, f"Вас сюда не звали {message.from_user.first_name}")
     except:
         logger(f"Не удалось вывести клавиатуру для пользователя {username}")
+        try:
+            bot.send_message(message.from_user.id, "Ошибка, попробуйте позже")
+        except:
+            logger(f"Не удалось уведомить пользователя {username} об ошибке")
 
 @bot.message_handler(func=lambda m: m.text == "Показать зарегистрированных пользователей")
 def handle_reg_users_button(message):
@@ -314,35 +364,89 @@ def callback_query(call: telebot.types.CallbackQuery):
     if data == "clear_bans":
         handle_clear_bans(call)
         return
-    bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
-    try:
-        bans[data.split(":")[0]] = data.split(":")[1]
-        logger(f"Добавлен бан для {username}")
-    except:
-        logger(f"Не удалось добавить бан для {username}")
-    try:
+    parts = data.split(":", 2)
+    step = parts[0]
+    giver = parts[1] if len(parts) > 1 else ""
+    banned = parts[2] if len(parts) > 2 else ""
+    rejection = None       # текст ответа на нажатие при отказе, отправляется после лока
+    log_line = None        # запись в лог, выполняется после лока
+    step2_text = None
+    step2_keyboard = None
+    # Критическая секция: чтение db.json, проверки и запись банов атомарны, поэтому два
+    # одновременных клика не могут записать бан дважды. Сетевые вызовы — после лока.
+    with update_lock:
+        # Защита от повторного клика по старой клавиатуре: уже зарегистрированный не перезапускает распределение
         registered_users = get_registered_users()
-        id = call.from_user.id
-        registered_users[invited_users[username]] = id
-        write_registered_user(registered_users)
-        logger(f"Пользователь {username} зарегистрирован")
-        bot.send_message(call.from_user.id, f"Вы зарегистирированы.")
-        if len(registered_users) == len(invited_users):
-            logger("Все пользователи зарегистрированы")
-            last_mix_result = mixer()
-            for name, id in registered_users.items():
-                try:
-                    message_text = f"{last_mix_result[name]} это тот кому вы дарите подарок"
-                    bot.send_message(id, message_text)
-                    logger(f"Пользователь {name} получил результат")
-                except:
-                    logger(f"Не удалось отправить сообщение с результатом пользователю {name}")
-            admin_name = invited_users[ADMIN_USERNAME]
-            send_admin_panel(registered_users[admin_name])
+        giver_name = invited_users.get(username)
+        if registered_users is None:
+            rejection = "Ошибка, попробуйте позже"
+            log_line = f"Не удалось проверить регистрацию пользователя {username}"
+        elif giver_name in registered_users:
+            rejection = "Вы уже зарегистирированы"
+        elif step not in ("b1", "b2") or giver != giver_name:
+            rejection = "Недоступно"
+            log_line = f"Отклонён выбор бана от {username}: {data}"
+        elif step == "b1":
+            if banned not in get_choice_range(username):
+                rejection = "Недоступно"
+                log_line = f"Отклонён первый бан от {username}: {data}"
+            else:
+                bans[giver] = [banned]
+                save_users_config()
+                log_line = f"Добавлен первый бан для {username}"
+                step2_text = "Выберите второго человека (необязательно) или нажмите \"Пропустить\""
+                step2_keyboard = build_ban_keyboard(giver, get_choice_range(username, exclude=[banned]), 2, skip=True)
+        elif len(bans.get(giver, [])) != 1:
+            rejection = "Начните регистрацию заново"
+            log_line = f"Отклонён второй бан без первого от {username}: {data}"
+        elif banned and banned not in get_choice_range(username, exclude=bans[giver]):
+            rejection = "Недоступно"
+            log_line = f"Отклонён второй бан от {username}: {data}"
+        elif banned:
+            bans[giver].append(banned)
+            save_users_config()
+            log_line = f"Добавлен второй бан для {username}"
         else:
-            bot.send_message(call.from_user.id, f"Всего зарегистрировалось {len(registered_users)}/{len(invited_users)} человек. Вы узнаете результат как только все пользователи пройдут регистрацию")
+            log_line = f"Пользователь {username} пропустил второй бан"
+    if log_line:
+        logger(log_line)
+    if rejection is not None:
+        bot.answer_callback_query(call.id, rejection)
+        return
+    if step == "b1":
+        try:
+            bot.answer_callback_query(call.id)
+        except:
+            logger(f"Не удалось подтвердить нажатие для пользователя {username}")
+        try:
+            bot.edit_message_text(step2_text, chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=step2_keyboard)
+        except:
+            try:
+                bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
+            except:
+                logger(f"Не удалось снять клавиатуру у старого сообщения для пользователя {username}")
+            bot.send_message(call.from_user.id, step2_text, reply_markup=step2_keyboard)
+        return
+    try:
+        bot.answer_callback_query(call.id)
     except:
-        logger(f"Не удалось зарегистрировать пользователя {username}")
+        logger(f"Не удалось подтвердить нажатие для пользователя {username}")
+    try:
+        bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
+    except:
+        logger(f"Не удалось снять клавиатуру для пользователя {username}")
+    # Регистрация, mixer() и рассылка — в одной критической секции: повторный клик из другого
+    # потока увидит пользователя уже зарегистрированным и не запустит mixer() второй раз.
+    already_registered = False
+    with update_lock:
+        registered_users = get_registered_users()
+        if registered_users is not None and giver_name in registered_users:
+            already_registered = True
+            logger(f"Повторный клик от {username} после регистрации: {data}")
+        else:
+            complete_registration(call, username)
+    if already_registered:
+        bot.answer_callback_query(call.id, "Вы уже зарегистирированы")
 
 logger("-------------------------------------------------------------------------")
 logger("Бот запущен")
